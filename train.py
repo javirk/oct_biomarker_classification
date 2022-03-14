@@ -18,6 +18,8 @@ from libs import resnet
 def main():
     # sleep(randint(1, 50))  # This is for the SLURM array jobs
 
+    os.makedirs('weights', exist_ok=True)
+
     current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     tb_path = Path(__file__).resolve().parents[0].joinpath('runs/DET_{}'.format(current_time))
 
