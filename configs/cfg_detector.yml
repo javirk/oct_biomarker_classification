@@ -1,0 +1,12 @@
+batch_size: 32
+epochs: 20
+lr: 0.01
+writing_per_epoch: 30
+model: resnet # 'resnet'
+model_number: resnet18 # Type of model for resnet [wide_resnet50_2, resnet50]
+from_pretrained: True # This means loading Imagenet weights
+classes: 10
+resize: 512
+
+# Model parameters
+dilation: True  # Only for Resnet. This applies replace_stride_with_dilation=[False, True, True] NO EFFECT YET
