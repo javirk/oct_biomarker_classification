@@ -3,7 +3,7 @@
 ## DON'T USE SPACES AFTER COMMAS
 
 # You must specify a valid email address!
-#SBATCH --mail-user=javier.gamazo-tejero@unibe.ch
+#SBATCH --mail-user=davide.scandella@unibe.ch
 # Mail on NONE, BEGIN, END, FAIL, REQUEUE, ALL
 #SBATCH --mail-type=FAIL,END
 #SBATCH --account=ws_00000
@@ -11,15 +11,15 @@
 # Job name
 #SBATCH --job-name="train_detector"
 # Partition
-#SBATCH --partition=gpu-invest # all, gpu, phi, long
+#SBATCH --partition=gpu-invest # all, gpu, phi, long, gpu-invest
 
 # Runtime and memory
-#SBATCH --time=24:00:00    # days-HH:MM:SS
+#SBATCH --time=12:00:00    # days-HH:MM:SS
 #SBATCH --mem-per-cpu=4G # it's memory PER CPU, NOT TOTAL RAM! maximum RAM is 246G in total
 # total RAM is mem-per-cpu * cpus-per-task
 
 # maximum cores is 20 on all, 10 on long, 24 on gpu, 64 on phi!
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 ##SBATCH --ntasks-per-node=1
@@ -36,8 +36,19 @@
 #SBATCH --output=logs/slurm-%A_%a.out
 
 # For array jobs
-# Array job containing 100 tasks, run max 10 tasks at the same time
-##SBATCH --array=1-100%10
+# Array job containing 6 tasks, run max 2 tasks at the same time
+##SBATCH --array=1-6%2
+
+# param_store=$HOME/oct_biomarker_classification/args.txt
+# target=$(cat $param_store | awk -v var=$SLURM_ARRAY_TASK_ID 'NR==var {print $1}')
 
 # Main Python code below this line
-python ./train.py -c configs/cfg_detector.yml
+module load Workspace
+module load Anaconda3
+eval "$(conda shell.bash hook)"
+conda activate pytorch_env
+#module load Workspace
+# srun python ./train.py -c configs/cfg_detector.yml
+# srun python ./train.py -c configs/cfg_detector_${target}.yml
+srun python ./train.py -c configs/cfg_detector_majority.yml
+# srun python ./train.py -c configs/cfg_detector_majority.yml --mode infer --model-path runs/DET_20220425-155847_train030_test030_ep30_bs032_lr1.00E-02_majority
