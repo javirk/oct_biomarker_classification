@@ -28,31 +28,33 @@ def main():
     u.copy_file(FLAGS.config, f'{tb_path}/config.yml')
 
     train_path = data_path.joinpath('ambulatorium_all_slices.hdf5')
-    validation_path = data_path.joinpath('oct_test_all.hdf5')
+    test_path = data_path.joinpath('oct_test_all.hdf5')
 
     if resize:
         t = transforms.Compose([Resize(resize), transforms.ToTensor(), transforms.RandomHorizontalFlip(),
-                                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
+                                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])        
+        t_test = transforms.Compose([Resize(resize), transforms.ToTensor(), transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
     else:
         t = transforms.Compose([transforms.ToTensor(), transforms.RandomHorizontalFlip(),
                                 transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
+        t_test = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
 
     totalset = OCTHDF5Dataset(train_path, transform_image=t)
     totalset_size = len(totalset)
     trainset_size = int(totalset_size * 0.9)
-    testset_size = totalset_size - trainset_size
-    trainset, testset = torch.utils.data.random_split(totalset, [trainset_size, testset_size])
+    valset_size = totalset_size - trainset_size
+    trainset, valset = torch.utils.data.random_split(totalset, [trainset_size, valset_size])
 
     writing_freq_train = trainset_size // (writing_per_epoch * BATCH_SIZE)
-    writing_freq_test = testset_size // BATCH_SIZE  # Only once per epoch
+    writing_freq_val = valset_size // BATCH_SIZE  # Only once per epoch
 
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-
-    valset = OCTHDF5Dataset(validation_path, slice_set=None, transform_image=t)
-    valset_size = len(valset)
-    writing_freq_val = valset_size // BATCH_SIZE  # Only once per epoch
     valloader = torch.utils.data.DataLoader(valset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+
+    testset = OCTHDF5Dataset(test_path, slice_set=None, transform_image=t_test)
+    testset_size = len(testset)
+    writing_freq_test = testset_size // BATCH_SIZE  # Only once per epoch
+    testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
 
     model = getattr(resnet, config['model_number'])(pretrained=config['from_pretrained'], num_classes=num_classes)
 
@@ -72,7 +74,7 @@ def main():
 
     best_roc = 0.0
     for epoch in range(N_EPOCHS):
-        for phase in ['train', 'test', 'validation']:
+        for phase in ['train', 'validation', 'test']:
             running_loss = 0.0
             running_pred = []
             running_true = []
@@ -82,14 +84,14 @@ def main():
                 loader = trainloader
                 writing_freq = writing_freq_train
                 i_train = 0
-            elif phase == 'test':
-                model.eval()
-                loader = testloader
-                writing_freq = writing_freq_test
             elif phase == 'validation':
                 model.eval()
                 loader = valloader
                 writing_freq = writing_freq_val
+            elif phase == 'test':
+                model.eval()
+                loader = testloader
+                writing_freq = writing_freq_test
 
             for i, data in enumerate(loader):
                 inputs, labels = data['images'].to(device).float(), data['labels'].to(device)
@@ -125,8 +127,9 @@ def main():
                         best_roc = epoch_rocauc
                         best_model_wts = copy.deepcopy(model.state_dict())
 
-            scheduler.step()
-            print(f'Epoch {epoch} finished')
+        scheduler.step()
+        print(f'Epoch {epoch} finished')
+
         torch.save(model.state_dict(),
                    Path(__file__).parents[0].joinpath('weights', f'detector_{current_time}_e{epoch}.pth'))
 
