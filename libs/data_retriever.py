@@ -104,35 +104,49 @@ class OCTHDF5Dataset(Dataset):
 class OCTSlicesDataset(Dataset):
     """OCT Slices dataset."""
 
-    def __init__(self, dtype, csv_paths, slices_path, target='majority', transform_image=None):
+    def __init__(self, dtype, csv_paths, slices_path, target='majority', transform_image=None, split_on='majority'):
         '''
         labels: ['Cannot Grade', 'Double Layer Sign', 'Drusen', 'Drusenoid PED',
                  'Healthy', 'Not in the list', 'PED Serous', 'Reticular Drusen',
                  'Subretinal Fibrosis', 'cRORA', 'iRORA']
         '''
 
+        assert dtype in ['train', 'test']
         self.dataset_type = dtype
 
-        # Do not consider the slices where target is NaN (majority not obtained or slices not allocated to grader)
         dfs = []
         for csv_path in csv_paths:
             dfs.append(pd.read_csv(csv_path))
         df = pd.concat(dfs, ignore_index=True)
-
-        df = df[['filename', 'volume_filename', 'dataset', 'slice_number', 'biomarker', target]]
         df = df[df.dataset == self.dataset_type]
-        df = df.dropna(axis=0, subset=target)
 
-        # slice_number not used for the time being
-        self.df = df.pivot(index=['filename', 'volume_filename'], columns='biomarker', values=target)
+        # Handle cases where splitting is done on majority but train/test on graderX, don't want to mess splitting up
+        if target != split_on:
+            column_list = ['filename', 'patient_id', 'biomarker', target, split_on] # 'slice_number', 'volume_filename'
+            column_drop_nan = target if dtype == 'train' else split_on # graders grade all fully-annot slices used as dtype='test'
+        else:
+            column_list = ['filename', 'patient_id', 'biomarker', target]
+            column_drop_nan = target
+
+        df = df[column_list]
+        # Do not consider the slices where target is NaN (majority not obtained in fully annot or slices not allocated to grader in partially annot)
+        df = df.dropna(axis=0, subset=column_drop_nan)
+
+        df_dataset = df[['filename', 'patient_id', 'biomarker', target]]
+        df_split = df[['filename', 'patient_id', 'biomarker', split_on]]
+        assert len(df_split) == len(df_dataset)
+
+        # slice_number and volume_filename not used for the time being
+        self.df = df_dataset.pivot(index=['filename', 'patient_id'], columns='biomarker', values=target)
         self.image_set = self.df.index.get_level_values(0)
         self.label_set = self.df.values.astype(int)
-        self.volume_set = self.df.index.get_level_values(1)
+        self.patient_set = self.df.index.get_level_values(1)
+
+        if dtype != 'train': # 'test' means fully annot, thus we need to split it into val and test
+            df_split = df_split.pivot(index=['filename', 'patient_id'], columns='biomarker', values=split_on)
+            self.label_split = df_split.values.astype(int)  # labels used to balance dataset during split
 
         self.slices_path = slices_path
-
-        # self.dataset = None
-        # self.quantity = 0
 
         self.dataset_len = len(self.image_set)
 
@@ -156,11 +170,9 @@ class OCTSlicesDataset(Dataset):
         return self.dataset_len
 
     def __getitem__(self, idx):
-        if self.image_set is None:
-            self.image_set = self.df.index.get_level_values(0)
 
-        if self.label_set is None:
-            self.label_set = self.df.values.astype(int)
+        assert self.image_set is not None
+        assert self.label_set is not None
 
         if torch.is_tensor(idx):
             idx = idx.tolist()

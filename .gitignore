@@ -156,3 +156,8 @@ runs/
 inputs/
 .job_detect.sh.swp
 logs/
+*.png
+
+configs/*
+!configs/*.example.txt
+.vscode/launch.json

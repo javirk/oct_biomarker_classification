@@ -177,22 +177,47 @@ def eval_model(model, valset, testset, device, save_path):
         label_names = testset.dataset.df.columns
     
     cohens_dict = dict()
+    auc_dict = dict()
+
+    # Plot curves
+    nrows = 3
+    ncols = math.ceil(len(label_names) / nrows)
+
+    fig_ss_val = plt.figure()
+    fig_pr_val = plt.figure()
 
     ### VALIDATION
-    val_trues, val_preds, _ = run_model_on_dataset(model, valset, device)
+    val_trues, val_preds, val_paths = run_model_on_dataset(model, valset, device)
+    pd.DataFrame(data=val_preds, index=val_paths, columns=label_names).to_csv(save_path/'val_predictions.csv')
 
-    # Define thresholds for classes based on optimised sensitivity and specificity on valset
     chosen_thresh = dict() # keep track of best thresholds
-    specif, sensit, roc_auc = dict(), dict(), dict()
+    precision, recall = dict(), dict()
+    specif, sensit = dict(), dict()
+    ap, auc = dict(), dict()
     cohens_dict['validation'] = dict()
+    auc_dict['validation'] = dict()
 
     for i in range(len(label_names)):
-        fpr, tpr, thresholds = metrics.roc_curve(val_trues[:, i], val_preds[:, i])
-        specif[i], sensit[i] = 1 - fpr, tpr
-        roc_auc[i] = metrics.auc(fpr, tpr)
 
-        func = np.sqrt(specif[i]**2 + sensit[i]**2)
-        chosen_thresh[i] = thresholds[func.argmax()]
+        threshold_arr = np.linspace(0.025, 0.975, 39)
+        kappa_arr = np.zeros_like(threshold_arr)
+        for j in range(threshold_arr.size):
+            prediction_int = np.zeros_like(val_preds[:, i])
+            prediction_int[val_preds[:, i] > threshold_arr[j]] = 1
+            kappa_arr[j] = metrics.cohen_kappa_score(val_trues[:, i], prediction_int)
+
+        chosen_thresh[i] = threshold_arr[kappa_arr.argmax()]
+
+        # MAXIMISE KAPPA ON SENSITIVITY AND SPECIFICITY
+        # fpr, tpr, thresholds = metrics.roc_curve(val_trues[:, i], val_preds[:, i])
+        # specif[i], sensit[i] = 1 - fpr, tpr
+        # auc[i] = metrics.auc(fpr, tpr)
+
+        # func = np.sqrt(specif[i]**2 + sensit[i]**2)
+        # chosen_thresh[i] = thresholds[func.argmax()]
+
+        precision[i], recall[i], thresholds = metrics.precision_recall_curve(val_trues[:, i], val_preds[:, i])
+        ap[i] = metrics.average_precision_score(val_trues[:, i], val_preds[:, i])
 
         prediction_int = np.zeros_like(val_preds[:, i])
         prediction_int[val_preds[:, i] > chosen_thresh[i]] = 1
@@ -205,7 +230,35 @@ def eval_model(model, valset, testset, device, save_path):
         fig.tight_layout()
         fig.savefig(f'{save_path}/val_conf_matrix_{"_".join(label_names[i].split())}.png')
 
-    with open(f"{save_path}/output_thresholds.json", "w") as outfile:
+        axx = fig_pr_val.add_subplot(nrows, ncols, i + 1)
+        axx.plot(recall[i], precision[i])
+        # axx.scatter(recall_th, precision_th, c="g", marker=r'$\clubsuit$')
+        # axx.plot([0, 1], [0, 1], 'k--')
+        axx.set_xlim([0.0, 1.0])
+        axx.set_ylim([0.0, 1.05])
+        axx.title.set_text('{0}\nAP = {1:0.3f}'.format(label_names[i], ap[i]))
+        axx.set_xlabel('Recall')
+        axx.set_ylabel('Precision')
+
+        fpr, tpr, thresholds = metrics.roc_curve(val_trues[:, i], val_preds[:, i])
+        specif[i], sensit[i] = 1 - fpr, tpr
+        auc[i] = metrics.auc(fpr, tpr)
+        auc_dict['validation'][label_names[i]] = auc[i]
+
+        specif_th = 1 - interp1d(thresholds, fpr)(chosen_thresh[i])
+        sensit_th = interp1d(thresholds, tpr)(chosen_thresh[i])
+
+        axx = fig_ss_val.add_subplot(nrows, ncols, i + 1)
+        axx.plot(specif[i], sensit[i])
+        axx.scatter(specif_th, sensit_th, c="r", marker='D')
+        axx.plot([0, 1], [1, 0], 'k--')
+        axx.set_xlim([0.0, 1.0])
+        axx.set_ylim([0.0, 1.05])
+        axx.title.set_text('{0}\nAUC = {1:0.3f}'.format(label_names[i], auc[i]))
+        axx.set_xlabel('Specificity')
+        axx.set_ylabel('Sensitivity')
+
+    with open(f"{save_path}/val_thresholds.json", "w") as outfile:
         json.dump({label_names[i]: str(chosen_thresh[i]) for i in range(len(label_names))}, outfile)
     
     ### TEST
@@ -214,15 +267,12 @@ def eval_model(model, valset, testset, device, save_path):
 
     precision, recall = dict(), dict()
     specif, sensit = dict(), dict()
-    ap, roc_auc = dict(), dict()
+    ap, auc = dict(), dict()
     cohens_dict['test'] = dict()
+    auc_dict['test'] = dict()
 
-    # Plot curves
-    nrows = 3
-    ncols = math.ceil(len(label_names) / nrows)
-
-    fig_ss = plt.figure()
-    fig_pr = plt.figure()
+    fig_ss_test = plt.figure()
+    fig_pr_test = plt.figure()
 
     for i in range(len(label_names)):
         precision[i], recall[i], thresholds = metrics.precision_recall_curve(test_trues[:, i], test_preds[:, i])
@@ -242,7 +292,7 @@ def eval_model(model, valset, testset, device, save_path):
         fig.tight_layout()
         fig.savefig(f'{save_path}/test_conf_matrix_{"_".join(label_names[i].split())}.png')
 
-        axx = fig_pr.add_subplot(nrows, ncols, i + 1)
+        axx = fig_pr_test.add_subplot(nrows, ncols, i + 1)
         axx.plot(recall[i], precision[i])
         # axx.scatter(recall_th, precision_th, c="g", marker=r'$\clubsuit$')
         # axx.plot([0, 1], [0, 1], 'k--')
@@ -254,29 +304,39 @@ def eval_model(model, valset, testset, device, save_path):
 
         fpr, tpr, thresholds = metrics.roc_curve(test_trues[:, i], test_preds[:, i])
         specif[i], sensit[i] = 1 - fpr, tpr
-        roc_auc[i] = metrics.auc(fpr, tpr)
+        auc[i] = metrics.auc(fpr, tpr)
+        auc_dict['test'][label_names[i]] = auc[i]
 
         specif_th = 1 - interp1d(thresholds, fpr)(chosen_thresh[i])
         sensit_th = interp1d(thresholds, tpr)(chosen_thresh[i])
 
-        axx = fig_ss.add_subplot(nrows, ncols, i + 1)
+        axx = fig_ss_test.add_subplot(nrows, ncols, i + 1)
         axx.plot(specif[i], sensit[i])
-        axx.scatter(specif_th, sensit_th, c="g", marker=r'$\clubsuit$')
+        axx.scatter(specif_th, sensit_th, c="r", marker='D')
         axx.plot([0, 1], [1, 0], 'k--')
         axx.set_xlim([0.0, 1.0])
         axx.set_ylim([0.0, 1.05])
-        axx.title.set_text('{0}\nAUC = {1:0.3f}'.format(label_names[i], roc_auc[i]))
+        axx.title.set_text('{0}\nAUC = {1:0.3f}'.format(label_names[i], auc[i]))
         axx.set_xlabel('Specificity')
         axx.set_ylabel('Sensitivity')
 
     with open(f"{save_path}/output_kappa_score.json", "w") as outfile:
         json.dump(cohens_dict, outfile)
 
-    fig_pr.tight_layout()
-    fig_pr.savefig(f'{save_path}/pr_curve.png')
+    with open(f"{save_path}/output_auc_score.json", "w") as outfile:
+        json.dump(auc_dict, outfile)
 
-    fig_ss.tight_layout()
-    fig_ss.savefig(f'{save_path}/roc_curve.png')
+    fig_pr_test.tight_layout()
+    fig_pr_test.savefig(f'{save_path}/test_PR_curve.png')
+
+    fig_ss_test.tight_layout()
+    fig_ss_test.savefig(f'{save_path}/test_ROC_curve.png')
+
+    fig_pr_val.tight_layout()
+    fig_pr_val.savefig(f'{save_path}/val_PR_curve.png')
+
+    fig_ss_val.tight_layout()
+    fig_ss_val.savefig(f'{save_path}/val_ROC_curve.png')
 
     return thresholds
 

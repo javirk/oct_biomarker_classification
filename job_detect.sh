@@ -48,7 +48,5 @@ module load Anaconda3
 eval "$(conda shell.bash hook)"
 conda activate pytorch_env
 #module load Workspace
-# srun python ./train.py -c configs/cfg_detector.yml
-# srun python ./train.py -c configs/cfg_detector_${target}.yml
-srun python ./train.py -c configs/cfg_detector_majority.yml
-# srun python ./train.py -c configs/cfg_detector_majority.yml --mode infer --model-path runs/DET_20220425-155847_train030_test030_ep30_bs032_lr1.00E-02_majority
+srun python ./oct_cli.py @configs/train.txt
+# srun python ./oct_cli.py @configs/infer.txt
