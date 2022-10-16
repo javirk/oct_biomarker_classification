@@ -213,11 +213,11 @@ class OCTMultiLabelDetector:
         lmbda = lambda epoch: 0.99
         scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lmbda)
 
-        print(f'Applied weights for training loss will be: {self.trainloader.dataset.weights.numpy()}')
+        print(f'Applied weights for training loss will be: {self.trainloader.dataset.posweights.numpy()}')
 
-        criterion_train = nn.BCEWithLogitsLoss(pos_weight=self.trainloader.dataset.weights.to(self.device)) 
-        criterion_val   = nn.BCEWithLogitsLoss(pos_weight=self.valloader.dataset.dataset.weights.to(self.device)) 
-        criterion_test  = nn.BCEWithLogitsLoss(pos_weight=self.testloader.dataset.dataset.weights.to(self.device)) 
+        criterion_train = nn.BCEWithLogitsLoss(pos_weight=self.trainloader.dataset.posweights.to(self.device)) 
+        criterion_val   = nn.BCEWithLogitsLoss(pos_weight=self.valloader.dataset.dataset.posweights.to(self.device)) 
+        criterion_test  = nn.BCEWithLogitsLoss(pos_weight=self.testloader.dataset.dataset.posweights.to(self.device)) 
 
         best_rocauc_samples = 0.0
         best_rocauc_weighted = 0.0

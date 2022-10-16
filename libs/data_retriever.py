@@ -152,7 +152,7 @@ class OCTSlicesDataset(Dataset):
 
         self.transform_image = transform_image
 
-        self.weights = self._get_weights_loss()
+        # self.weights = self._get_weights_loss()
         self.posweights = self._get_posweights()
 
     @property
@@ -191,12 +191,12 @@ class OCTSlicesDataset(Dataset):
         sample = {'images': image, 'labels': label, 'paths': self.image_set[idx]} #, 'center': center}
         return sample
 
-    def _get_weights_loss(self):
-        labels_sum = np.sum(self.label_set, axis=0)
-        largest_class = max(labels_sum)
-        weights = largest_class / labels_sum
-        weights = torch.from_numpy(weights)
-        return weights
+    # def _get_weights_loss(self):
+    #     labels_sum = np.sum(self.label_set, axis=0)
+    #     largest_class = max(labels_sum)
+    #     weights = largest_class / labels_sum
+    #     weights = torch.from_numpy(weights)
+    #     return weights
 
     def _get_posweights(self):
         class_counts = np.sum(self.label_set, axis=0)
