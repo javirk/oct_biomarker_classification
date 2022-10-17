@@ -29,6 +29,7 @@ parent_parser.add_argument('--resize', action="store", type=int)
 parent_parser.add_argument('--test-target', action="store", type=str, required=True)
 parent_parser.add_argument('--model-name', action="store", type=str, required=True)
 parent_parser.add_argument('--no-ubelix', action="store_false", dest="ubelix")
+parent_parser.add_argument('--suffix', action="store", type=str, default="")
 
 subparsers = parser.add_subparsers(dest='command', help='Sub-commands')
 

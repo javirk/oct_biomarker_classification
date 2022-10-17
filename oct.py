@@ -96,6 +96,9 @@ class OCTMultiLabelDetector:
                 args.test_target
             )
 
+        if args.suffix:
+            path_str += f"_{args.suffix}"
+
         if getattr(args, 'restart_from', None) is not None:
             path_str += "_RESTART"
 
